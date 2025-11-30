@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"fn":["get_path_params_query","parse_robotstxt"],"mod":["matcher","parser"],"trait":["RobotsParseHandler"],"type":["DefaultMatcher"]};

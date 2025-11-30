@@ -1,0 +1,12 @@
+[
+  {
+    "label": "Build Binary",
+    "adapter": "CodeLLDB",
+    "program": "path_to_program",
+    "request": "launch",
+    "build": {
+      "command": "make",
+      "args": ["build", "-j8"]
+    }
+  }
+]

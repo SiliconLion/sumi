@@ -1,0 +1,79 @@
+# Sumi-Ripple Example Configuration File
+#
+# This file demonstrates all available configuration options for the
+# Sumi-Ripple web terrain mapper.
+
+[crawler]
+# Maximum depth to crawl from seed URLs (0 = seeds only)
+max-depth = 3
+
+# Maximum number of concurrent page fetches
+max-concurrent-pages-open = 10
+
+# Minimum time between requests to the same domain (milliseconds)
+minimum-time-on-page = 1000
+
+# Maximum number of requests per domain
+max-domain-requests = 500
+
+[user-agent]
+# Name of the crawler (alphanumeric and hyphens only)
+crawler-name = "SumiRipple"
+
+# Version string for the crawler
+crawler-version = "1.0"
+
+# URL with information about the crawler
+contact-url = "https://example.com/about-our-crawler"
+
+# Email address for crawler-related contact
+contact-email = "crawler-admin@example.com"
+
+[output]
+# Path to the SQLite database file
+database-path = "./sumi-ripple.db"
+
+# Path to the markdown summary file
+summary-path = "./crawl-summary.md"
+
+# Quality domains - these are fully crawled
+[[quality]]
+domain = "example.com"
+seeds = [
+    "https://example.com/",
+    "https://example.com/blog/"
+]
+
+[[quality]]
+domain = "docs.example.com"
+seeds = ["https://docs.example.com/"]
+
+# Wildcard example - matches example.org and all subdomains
+[[quality]]
+domain = "*.example.org"
+seeds = [
+    "https://example.org/",
+    "https://blog.example.org/"
+]
+
+# Blacklisted domains - recorded but not visited
+[[blacklist]]
+domain = "ads.example.net"
+
+[[blacklist]]
+domain = "tracking.example.com"
+
+# Wildcard blacklist - blocks all ad-related subdomains
+[[blacklist]]
+domain = "*.doubleclick.net"
+
+# Stubbed domains - noted but never visited
+[[stub]]
+domain = "github.com"
+
+[[stub]]
+domain = "twitter.com"
+
+# Wildcard stub - all social media subdomains
+[[stub]]
+domain = "*.facebook.com"

@@ -1,0 +1,10 @@
+/home/afriendofjamis/Documents/Rust Projects/sumi/sumi/target/debug/deps/hashlink-bc6611047c160a78.d: /home/afriendofjamis/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/hashlink-0.8.4/src/lib.rs /home/afriendofjamis/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/hashlink-0.8.4/src/linked_hash_map.rs /home/afriendofjamis/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/hashlink-0.8.4/src/linked_hash_set.rs /home/afriendofjamis/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/hashlink-0.8.4/src/lru_cache.rs
+
+/home/afriendofjamis/Documents/Rust Projects/sumi/sumi/target/debug/deps/libhashlink-bc6611047c160a78.rlib: /home/afriendofjamis/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/hashlink-0.8.4/src/lib.rs /home/afriendofjamis/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/hashlink-0.8.4/src/linked_hash_map.rs /home/afriendofjamis/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/hashlink-0.8.4/src/linked_hash_set.rs /home/afriendofjamis/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/hashlink-0.8.4/src/lru_cache.rs
+
+/home/afriendofjamis/Documents/Rust Projects/sumi/sumi/target/debug/deps/libhashlink-bc6611047c160a78.rmeta: /home/afriendofjamis/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/hashlink-0.8.4/src/lib.rs /home/afriendofjamis/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/hashlink-0.8.4/src/linked_hash_map.rs /home/afriendofjamis/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/hashlink-0.8.4/src/linked_hash_set.rs /home/afriendofjamis/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/hashlink-0.8.4/src/lru_cache.rs
+
+/home/afriendofjamis/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/hashlink-0.8.4/src/lib.rs:
+/home/afriendofjamis/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/hashlink-0.8.4/src/linked_hash_map.rs:
+/home/afriendofjamis/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/hashlink-0.8.4/src/linked_hash_set.rs:
+/home/afriendofjamis/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/hashlink-0.8.4/src/lru_cache.rs:

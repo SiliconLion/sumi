@@ -1,0 +1,319 @@
+//! Scheduler for managing the crawl frontier and rate limiting
+//!
+//! This module handles:
+//! - Priority queue management for URLs to crawl
+//! - Global concurrency limiting via semaphores
+//! - Per-domain rate limiting and request counting
+//! - Respecting minimum delays between requests
+//! - Integrating robots.txt crawl delays
+
+use crate::config::CrawlerConfig;
+use crate::state::DomainState;
+use std::collections::HashMap;
+use std::sync::Arc;
+use std::time::{Duration, Instant};
+use tokio::sync::Semaphore;
+use url::Url;
+
+/// A URL queued for fetching with priority information
+#[derive(Debug, Clone)]
+pub struct QueuedUrl {
+    /// The URL to fetch
+    pub url: Url,
+
+    /// The domain of this URL
+    pub domain: String,
+
+    /// Priority value (lower is higher priority)
+    pub priority: u32,
+
+    /// Database page ID
+    pub page_id: i64,
+}
+
+/// A scheduled fetch with a semaphore permit
+pub struct ScheduledFetch {
+    /// The URL to fetch
+    pub url: QueuedUrl,
+
+    /// The semaphore permit for this fetch
+    pub _permit: tokio::sync::OwnedSemaphorePermit,
+}
+
+/// Scheduler manages the frontier queue and rate limiting
+///
+/// The scheduler coordinates:
+/// - Global concurrency limits (max concurrent pages open)
+/// - Per-domain rate limits (minimum time between requests)
+/// - Per-domain request counts (max requests per domain)
+/// - Priority-based URL selection from the frontier
+pub struct Scheduler {
+    /// Global semaphore for limiting concurrent fetches
+    global_semaphore: Arc<Semaphore>,
+
+    /// Per-domain state tracking
+    domain_states: HashMap<String, DomainState>,
+
+    /// Frontier queue of URLs to fetch
+    /// TODO: Replace with proper priority queue implementation
+    frontier: Vec<QueuedUrl>,
+
+    /// Crawler configuration
+    config: CrawlerConfig,
+}
+
+impl Scheduler {
+    /// Creates a new scheduler
+    ///
+    /// # Arguments
+    ///
+    /// * `config` - The crawler configuration
+    /// * `initial_frontier` - Initial URLs to crawl
+    /// * `initial_domain_states` - Existing domain states (for resume)
+    ///
+    /// # Returns
+    ///
+    /// A new Scheduler instance
+    pub fn new(
+        config: CrawlerConfig,
+        initial_frontier: Vec<QueuedUrl>,
+        initial_domain_states: HashMap<String, DomainState>,
+    ) -> Self {
+        let global_semaphore = Arc::new(Semaphore::new(config.max_concurrent_pages_open as usize));
+
+        Self {
+            global_semaphore,
+            domain_states: initial_domain_states,
+            frontier: initial_frontier,
+            config,
+        }
+    }
+
+    /// Gets the next URL to fetch
+    ///
+    /// This method:
+    /// 1. Acquires a global semaphore permit
+    /// 2. Searches the frontier for a URL whose domain can accept a request
+    /// 3. Returns the URL with its permit, or None if no URLs are available
+    ///
+    /// # Returns
+    ///
+    /// * `Some(ScheduledFetch)` - A URL that's ready to fetch
+    /// * `None` - No URLs are currently available to fetch
+    pub async fn next_url(&mut self) -> Option<ScheduledFetch> {
+        // Acquire global semaphore permit
+        let permit = self.global_semaphore.clone().acquire_owned().await.ok()?;
+
+        let now = Instant::now();
+
+        // Find the first URL whose domain can accept a request
+        let position = self.frontier.iter().position(|queued| {
+            let state = self
+                .domain_states
+                .entry(queued.domain.clone())
+                .or_insert_with(DomainState::new);
+
+            state.can_request(&self.config, now)
+        })?;
+
+        // Remove and return the URL
+        let url = self.frontier.remove(position);
+
+        Some(ScheduledFetch {
+            url,
+            _permit: permit,
+        })
+    }
+
+    /// Adds a URL to the frontier
+    ///
+    /// # Arguments
+    ///
+    /// * `url` - The queued URL to add
+    pub fn add_to_frontier(&mut self, url: QueuedUrl) {
+        // TODO: Insert into priority queue maintaining order
+        self.frontier.push(url);
+    }
+
+    /// Records that a request was made to a domain
+    ///
+    /// # Arguments
+    ///
+    /// * `domain` - The domain that received the request
+    pub fn record_request(&mut self, domain: &str) {
+        let now = Instant::now();
+        let state = self
+            .domain_states
+            .entry(domain.to_string())
+            .or_insert_with(DomainState::new);
+
+        state.record_request(now);
+    }
+
+    /// Marks a domain as rate limited
+    ///
+    /// # Arguments
+    ///
+    /// * `domain` - The domain to mark as rate limited
+    pub fn mark_rate_limited(&mut self, domain: &str) {
+        let state = self
+            .domain_states
+            .entry(domain.to_string())
+            .or_insert_with(DomainState::new);
+
+        state.mark_rate_limited();
+    }
+
+    /// Returns the number of URLs in the frontier
+    pub fn frontier_size(&self) -> usize {
+        self.frontier.len()
+    }
+
+    /// Returns whether the frontier is empty
+    pub fn is_empty(&self) -> bool {
+        self.frontier.is_empty()
+    }
+
+    /// Gets the domain state for a specific domain
+    pub fn get_domain_state(&self, domain: &str) -> Option<&DomainState> {
+        self.domain_states.get(domain)
+    }
+
+    /// Gets mutable domain state for a specific domain
+    pub fn get_domain_state_mut(&mut self, domain: &str) -> Option<&mut DomainState> {
+        self.domain_states.get_mut(domain)
+    }
+}
+
+/// Calculates the effective delay for a domain
+///
+/// This takes the maximum of:
+/// - The configured minimum time on page
+/// - The robots.txt crawl delay (if specified)
+///
+/// # Arguments
+///
+/// * `config` - The crawler configuration
+/// * `domain_state` - The domain state (which may contain robots.txt data)
+///
+/// # Returns
+///
+/// The effective delay duration
+pub fn effective_delay(config: &CrawlerConfig, domain_state: &DomainState) -> Duration {
+    let config_delay = Duration::from_millis(config.minimum_time_on_page);
+
+    // Check for robots.txt crawl delay
+    let robots_delay = domain_state
+        .robots_txt
+        .as_ref()
+        .and_then(|_robots| {
+            // TODO: Extract crawl delay from robots.txt
+            // For now, just use config delay
+            None as Option<f64>
+        })
+        .map(|seconds| Duration::from_secs_f64(seconds))
+        .unwrap_or(Duration::ZERO);
+
+    std::cmp::max(config_delay, robots_delay)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn create_test_config() -> CrawlerConfig {
+        CrawlerConfig {
+            max_depth: 3,
+            max_concurrent_pages_open: 10,
+            minimum_time_on_page: 1000,
+            max_domain_requests: 500,
+        }
+    }
+
+    fn create_test_url(domain: &str, path: &str, page_id: i64) -> QueuedUrl {
+        let url = Url::parse(&format!("https://{}{}", domain, path)).unwrap();
+        QueuedUrl {
+            url: url.clone(),
+            domain: domain.to_string(),
+            priority: 0,
+            page_id,
+        }
+    }
+
+    #[test]
+    fn test_new_scheduler() {
+        let config = create_test_config();
+        let scheduler = Scheduler::new(config, vec![], HashMap::new());
+
+        assert_eq!(scheduler.frontier_size(), 0);
+        assert!(scheduler.is_empty());
+    }
+
+    #[test]
+    fn test_add_to_frontier() {
+        let config = create_test_config();
+        let mut scheduler = Scheduler::new(config, vec![], HashMap::new());
+
+        let url = create_test_url("example.com", "/page", 1);
+        scheduler.add_to_frontier(url);
+
+        assert_eq!(scheduler.frontier_size(), 1);
+        assert!(!scheduler.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_next_url_from_frontier() {
+        let config = create_test_config();
+        let url = create_test_url("example.com", "/page", 1);
+        let mut scheduler = Scheduler::new(config, vec![url], HashMap::new());
+
+        assert_eq!(scheduler.frontier_size(), 1);
+
+        let scheduled = scheduler.next_url().await;
+        assert!(scheduled.is_some());
+
+        assert_eq!(scheduler.frontier_size(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_next_url_empty_frontier() {
+        let config = create_test_config();
+        let mut scheduler = Scheduler::new(config, vec![], HashMap::new());
+
+        let scheduled = scheduler.next_url().await;
+        assert!(scheduled.is_none());
+    }
+
+    #[test]
+    fn test_record_request() {
+        let config = create_test_config();
+        let mut scheduler = Scheduler::new(config, vec![], HashMap::new());
+
+        scheduler.record_request("example.com");
+
+        let state = scheduler.get_domain_state("example.com");
+        assert!(state.is_some());
+        assert_eq!(state.unwrap().request_count, 1);
+    }
+
+    #[test]
+    fn test_mark_rate_limited() {
+        let config = create_test_config();
+        let mut scheduler = Scheduler::new(config, vec![], HashMap::new());
+
+        scheduler.mark_rate_limited("example.com");
+
+        let state = scheduler.get_domain_state("example.com");
+        assert!(state.is_some());
+        assert!(state.unwrap().rate_limited);
+    }
+
+    #[test]
+    fn test_effective_delay_uses_config() {
+        let config = create_test_config();
+        let domain_state = DomainState::new();
+
+        let delay = effective_delay(&config, &domain_state);
+        assert_eq!(delay, Duration::from_millis(1000));
+    }
+}

@@ -1,0 +1,49 @@
+[package]
+name = "sumi-ripple"
+version = "1.0.0"
+edition = "2021"
+
+[dependencies]
+# Async runtime
+tokio = { version = "1", features = ["full"] }
+
+# HTTP client
+reqwest = { version = "0.11", features = ["rustls-tls", "gzip", "brotli"] }
+
+# HTML parsing
+scraper = "0.18"
+
+# URL handling
+url = "2"
+
+# Configuration
+toml = "0.8"
+serde = { version = "1", features = ["derive"] }
+
+# Database
+rusqlite = { version = "0.30", features = ["bundled"] }
+
+# Robots.txt parsing
+robotstxt = "0.3"
+
+# Date/time
+chrono = { version = "0.4", features = ["serde"] }
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# CLI
+clap = { version = "4", features = ["derive"] }
+
+# Error handling
+thiserror = "1"
+anyhow = "1"
+
+# Hashing (for config integrity)
+sha2 = "0.10"
+hex = "0.4"
+
+[dev-dependencies]
+wiremock = "0.5"
+tempfile = "3"

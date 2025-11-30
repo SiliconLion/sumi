@@ -1,0 +1,10 @@
+/home/afriendofjamis/Documents/Rust Projects/sumi/sumi/target/release/deps/hashlink-e134e0c927966c0e.d: /home/afriendofjamis/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/hashlink-0.8.4/src/lib.rs /home/afriendofjamis/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/hashlink-0.8.4/src/linked_hash_map.rs /home/afriendofjamis/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/hashlink-0.8.4/src/linked_hash_set.rs /home/afriendofjamis/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/hashlink-0.8.4/src/lru_cache.rs
+
+/home/afriendofjamis/Documents/Rust Projects/sumi/sumi/target/release/deps/libhashlink-e134e0c927966c0e.rlib: /home/afriendofjamis/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/hashlink-0.8.4/src/lib.rs /home/afriendofjamis/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/hashlink-0.8.4/src/linked_hash_map.rs /home/afriendofjamis/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/hashlink-0.8.4/src/linked_hash_set.rs /home/afriendofjamis/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/hashlink-0.8.4/src/lru_cache.rs
+
+/home/afriendofjamis/Documents/Rust Projects/sumi/sumi/target/release/deps/libhashlink-e134e0c927966c0e.rmeta: /home/afriendofjamis/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/hashlink-0.8.4/src/lib.rs /home/afriendofjamis/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/hashlink-0.8.4/src/linked_hash_map.rs /home/afriendofjamis/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/hashlink-0.8.4/src/linked_hash_set.rs /home/afriendofjamis/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/hashlink-0.8.4/src/lru_cache.rs
+
+/home/afriendofjamis/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/hashlink-0.8.4/src/lib.rs:
+/home/afriendofjamis/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/hashlink-0.8.4/src/linked_hash_map.rs:
+/home/afriendofjamis/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/hashlink-0.8.4/src/linked_hash_set.rs:
+/home/afriendofjamis/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/hashlink-0.8.4/src/lru_cache.rs:
