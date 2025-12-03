@@ -1,1 +1,0 @@
-window.SIDEBAR_ITEMS = {"enum":["ParseKeyType"],"fn":["escape_pattern"],"struct":["ParsedRobotsKey","RobotsTxtParser"]};

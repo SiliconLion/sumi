@@ -34,6 +34,18 @@ pub enum SumiError {
     #[error("Database error: {0}")]
     Database(#[from] rusqlite::Error),
 
+    #[error("Storage error: {0}")]
+    StorageError(#[from] storage::StorageError),
+
+    #[error("URL error: {0}")]
+    UrlError(#[from] UrlError),
+
+    #[error("URL parse error: {0}")]
+    UrlParse(#[from] ::url::ParseError),
+
+    #[error("HTTP client error: {0}")]
+    Reqwest(#[from] reqwest::Error),
+
     #[error("HTML parse error for {url}: {message}")]
     HtmlParse { url: String, message: String },
 

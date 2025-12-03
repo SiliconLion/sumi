@@ -11,8 +11,8 @@ mod fetcher;
 mod parser;
 mod scheduler;
 
-pub use coordinator::run_crawl;
-pub use fetcher::{build_http_client, FetchResult};
+pub use coordinator::{run_crawl, Coordinator};
+pub use fetcher::{build_http_client, fetch_url, FetchResult};
 pub use parser::{extract_links_simple, parse_html};
 pub use scheduler::Scheduler;
 

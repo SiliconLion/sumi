@@ -75,11 +75,69 @@ impl ParsedRobots {
     ///
     /// * `Some(f64)` - The crawl delay in seconds
     /// * `None` - If no crawl delay is specified
-    pub fn crawl_delay(&self, _user_agent: &str) -> Option<f64> {
-        // TODO: Implement crawl delay extraction from robotstxt
-        // The robotstxt crate doesn't directly expose crawl-delay,
-        // so we may need to parse it manually
-        None
+    pub fn crawl_delay(&self, user_agent: &str) -> Option<f64> {
+        if self.allow_all || self.content.is_empty() {
+            return None;
+        }
+
+        // Parse robots.txt manually to find Crawl-delay directive
+        // Format: Crawl-delay: <seconds>
+        // This directive applies to the most recent User-agent group
+
+        let mut current_user_agents: Vec<String> = Vec::new();
+        let mut crawl_delay_for_wildcard: Option<f64> = None;
+        let mut crawl_delay_for_agent: Option<f64> = None;
+
+        let normalized_agent = user_agent.to_lowercase();
+
+        for line in self.content.lines() {
+            let trimmed = line.trim();
+
+            // Skip comments and empty lines
+            if trimmed.is_empty() || trimmed.starts_with('#') {
+                continue;
+            }
+
+            // Parse directive
+            if let Some((key, value)) = trimmed.split_once(':') {
+                let key = key.trim().to_lowercase();
+                let value = value.trim();
+
+                match key.as_str() {
+                    "user-agent" => {
+                        // Add to current user-agent group
+                        // Multiple User-agent lines belong to the same group
+                        current_user_agents.push(value.to_lowercase());
+                    }
+                    "crawl-delay" => {
+                        // Parse the crawl delay value
+                        if let Ok(delay) = value.parse::<f64>() {
+                            // Check if this applies to our user agent or wildcard
+                            if current_user_agents
+                                .iter()
+                                .any(|ua| ua == "*" || normalized_agent.contains(ua))
+                            {
+                                if current_user_agents.contains(&"*".to_string()) {
+                                    crawl_delay_for_wildcard = Some(delay);
+                                } else {
+                                    crawl_delay_for_agent = Some(delay);
+                                }
+                            }
+                        }
+                        // After processing crawl-delay, clear current group
+                        // The next User-agent directive will start a new group
+                        current_user_agents.clear();
+                    }
+                    _ => {
+                        // Other directives (Allow, Disallow, etc.)
+                        // These don't affect crawl delay parsing
+                    }
+                }
+            }
+        }
+
+        // Prefer specific user-agent delay over wildcard delay
+        crawl_delay_for_agent.or(crawl_delay_for_wildcard)
     }
 }
 
@@ -142,5 +200,58 @@ mod tests {
         let content = "";
         let robots = ParsedRobots::from_content(content);
         assert!(robots.is_allowed("/any/path", "TestBot"));
+    }
+
+    #[test]
+    fn test_crawl_delay_wildcard() {
+        let content = "User-agent: *\nCrawl-delay: 10\nDisallow: /admin";
+        let robots = ParsedRobots::from_content(content);
+        assert_eq!(robots.crawl_delay("TestBot"), Some(10.0));
+        assert_eq!(robots.crawl_delay("AnyBot"), Some(10.0));
+    }
+
+    #[test]
+    fn test_crawl_delay_specific_agent() {
+        let content = "User-agent: TestBot\nCrawl-delay: 5\n\nUser-agent: *\nCrawl-delay: 10";
+        let robots = ParsedRobots::from_content(content);
+        assert_eq!(robots.crawl_delay("TestBot"), Some(5.0));
+        assert_eq!(robots.crawl_delay("OtherBot"), Some(10.0));
+    }
+
+    #[test]
+    fn test_crawl_delay_no_delay() {
+        let content = "User-agent: *\nDisallow: /admin";
+        let robots = ParsedRobots::from_content(content);
+        assert_eq!(robots.crawl_delay("TestBot"), None);
+    }
+
+    #[test]
+    fn test_crawl_delay_decimal() {
+        let content = "User-agent: *\nCrawl-delay: 2.5";
+        let robots = ParsedRobots::from_content(content);
+        assert_eq!(robots.crawl_delay("TestBot"), Some(2.5));
+    }
+
+    #[test]
+    fn test_crawl_delay_allow_all() {
+        let robots = ParsedRobots::allow_all();
+        assert_eq!(robots.crawl_delay("TestBot"), None);
+    }
+
+    #[test]
+    fn test_crawl_delay_case_insensitive() {
+        let content = "User-agent: TestBot\ncrawl-delay: 7";
+        let robots = ParsedRobots::from_content(content);
+        assert_eq!(robots.crawl_delay("testbot"), Some(7.0));
+        assert_eq!(robots.crawl_delay("TESTBOT"), Some(7.0));
+    }
+
+    #[test]
+    fn test_crawl_delay_multiple_user_agents() {
+        let content = "User-agent: BotA\nUser-agent: BotB\nCrawl-delay: 3";
+        let robots = ParsedRobots::from_content(content);
+        assert_eq!(robots.crawl_delay("BotA"), Some(3.0));
+        assert_eq!(robots.crawl_delay("BotB"), Some(3.0));
+        assert_eq!(robots.crawl_delay("BotC"), None);
     }
 }

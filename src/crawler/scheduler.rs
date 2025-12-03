@@ -183,6 +183,11 @@ impl Scheduler {
     pub fn get_domain_state_mut(&mut self, domain: &str) -> Option<&mut DomainState> {
         self.domain_states.get_mut(domain)
     }
+
+    /// Gets all domain states (for persistence)
+    pub fn get_all_domain_states(&self) -> &HashMap<String, DomainState> {
+        &self.domain_states
+    }
 }
 
 /// Calculates the effective delay for a domain
@@ -195,21 +200,27 @@ impl Scheduler {
 ///
 /// * `config` - The crawler configuration
 /// * `domain_state` - The domain state (which may contain robots.txt data)
+/// * `user_agent` - The user agent string to check for crawl delay
 ///
 /// # Returns
 ///
 /// The effective delay duration
-pub fn effective_delay(config: &CrawlerConfig, domain_state: &DomainState) -> Duration {
+pub fn effective_delay(
+    config: &CrawlerConfig,
+    domain_state: &DomainState,
+    user_agent: &str,
+) -> Duration {
     let config_delay = Duration::from_millis(config.minimum_time_on_page);
 
     // Check for robots.txt crawl delay
     let robots_delay = domain_state
         .robots_txt
         .as_ref()
-        .and_then(|_robots| {
-            // TODO: Extract crawl delay from robots.txt
-            // For now, just use config delay
-            None as Option<f64>
+        .and_then(|cached_robots| {
+            // Parse robots.txt and extract crawl delay
+            use crate::robots::ParsedRobots;
+            let parsed = ParsedRobots::from_content(&cached_robots.content);
+            parsed.crawl_delay(user_agent)
         })
         .map(|seconds| Duration::from_secs_f64(seconds))
         .unwrap_or(Duration::ZERO);
@@ -313,7 +324,52 @@ mod tests {
         let config = create_test_config();
         let domain_state = DomainState::new();
 
-        let delay = effective_delay(&config, &domain_state);
+        let delay = effective_delay(&config, &domain_state, "TestBot");
         assert_eq!(delay, Duration::from_millis(1000));
+    }
+
+    #[test]
+    fn test_effective_delay_with_robots_delay() {
+        let config = create_test_config();
+        let mut domain_state = DomainState::new();
+
+        // Add robots.txt with crawl delay of 5 seconds
+        domain_state.update_robots("User-agent: *\nCrawl-delay: 5\nDisallow: /admin".to_string());
+
+        let delay = effective_delay(&config, &domain_state, "TestBot");
+        // Should use the maximum of config (1 second) and robots (5 seconds)
+        assert_eq!(delay, Duration::from_secs(5));
+    }
+
+    #[test]
+    fn test_effective_delay_robots_smaller_than_config() {
+        let config = create_test_config();
+        let mut domain_state = DomainState::new();
+
+        // Add robots.txt with crawl delay of 0.5 seconds (500ms)
+        domain_state.update_robots("User-agent: *\nCrawl-delay: 0.5".to_string());
+
+        let delay = effective_delay(&config, &domain_state, "TestBot");
+        // Should use the maximum of config (1000ms) and robots (500ms)
+        assert_eq!(delay, Duration::from_millis(1000));
+    }
+
+    #[test]
+    fn test_effective_delay_specific_user_agent() {
+        let config = create_test_config();
+        let mut domain_state = DomainState::new();
+
+        // Add robots.txt with different delays for different user agents
+        domain_state.update_robots(
+            "User-agent: TestBot\nCrawl-delay: 10\n\nUser-agent: *\nCrawl-delay: 2".to_string()
+        );
+
+        // TestBot should get 10 seconds
+        let delay_testbot = effective_delay(&config, &domain_state, "TestBot");
+        assert_eq!(delay_testbot, Duration::from_secs(10));
+
+        // Other bots should get 2 seconds
+        let delay_other = effective_delay(&config, &domain_state, "OtherBot");
+        assert_eq!(delay_other, Duration::from_secs(2));
     }
 }

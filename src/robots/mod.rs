@@ -23,9 +23,48 @@ use crate::SumiError;
 /// * `Ok(ParsedRobots)` - Successfully fetched and parsed robots.txt
 /// * `Err(SumiError)` - Failed to fetch or parse
 pub async fn fetch_robots(domain: &str, user_agent: &str) -> Result<ParsedRobots, SumiError> {
-    // TODO: Implement robots.txt fetching
-    let _ = (domain, user_agent);
-    Ok(ParsedRobots::allow_all())
+    let robots_url = format!("https://{}/robots.txt", domain);
+
+    tracing::debug!("Fetching robots.txt from {}", robots_url);
+
+    // Build a simple HTTP client for robots.txt fetching
+    let client = reqwest::Client::builder()
+        .user_agent(user_agent)
+        .timeout(std::time::Duration::from_secs(10))
+        .build()?;
+
+    // Fetch robots.txt
+    match client.get(&robots_url).send().await {
+        Ok(response) => {
+            if response.status().is_success() {
+                match response.text().await {
+                    Ok(content) => {
+                        tracing::debug!("Successfully fetched robots.txt for {}", domain);
+                        Ok(ParsedRobots::from_content(&content))
+                    }
+                    Err(e) => {
+                        tracing::warn!("Failed to read robots.txt body for {}: {}", domain, e);
+                        Ok(ParsedRobots::allow_all())
+                    }
+                }
+            } else {
+                tracing::debug!(
+                    "robots.txt not found for {} (status {}), allowing all",
+                    domain,
+                    response.status()
+                );
+                Ok(ParsedRobots::allow_all())
+            }
+        }
+        Err(e) => {
+            tracing::debug!(
+                "Failed to fetch robots.txt for {}: {}, allowing all",
+                domain,
+                e
+            );
+            Ok(ParsedRobots::allow_all())
+        }
+    }
 }
 
 /// Checks if a URL is allowed by robots.txt

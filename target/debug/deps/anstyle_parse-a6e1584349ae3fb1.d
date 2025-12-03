@@ -1,9 +1,0 @@
-/home/afriendofjamis/Documents/Rust Projects/sumi/sumi/target/debug/deps/anstyle_parse-a6e1584349ae3fb1.d: /home/afriendofjamis/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/anstyle-parse-0.2.7/src/lib.rs /home/afriendofjamis/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/anstyle-parse-0.2.7/src/params.rs /home/afriendofjamis/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/anstyle-parse-0.2.7/src/state/mod.rs /home/afriendofjamis/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/anstyle-parse-0.2.7/src/state/definitions.rs /home/afriendofjamis/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/anstyle-parse-0.2.7/src/state/table.rs
-
-/home/afriendofjamis/Documents/Rust Projects/sumi/sumi/target/debug/deps/libanstyle_parse-a6e1584349ae3fb1.rmeta: /home/afriendofjamis/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/anstyle-parse-0.2.7/src/lib.rs /home/afriendofjamis/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/anstyle-parse-0.2.7/src/params.rs /home/afriendofjamis/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/anstyle-parse-0.2.7/src/state/mod.rs /home/afriendofjamis/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/anstyle-parse-0.2.7/src/state/definitions.rs /home/afriendofjamis/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/anstyle-parse-0.2.7/src/state/table.rs
-
-/home/afriendofjamis/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/anstyle-parse-0.2.7/src/lib.rs:
-/home/afriendofjamis/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/anstyle-parse-0.2.7/src/params.rs:
-/home/afriendofjamis/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/anstyle-parse-0.2.7/src/state/mod.rs:
-/home/afriendofjamis/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/anstyle-parse-0.2.7/src/state/definitions.rs:
-/home/afriendofjamis/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/anstyle-parse-0.2.7/src/state/table.rs:

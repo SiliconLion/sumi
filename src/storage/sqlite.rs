@@ -2,12 +2,12 @@
 //!
 //! This module provides a SQLite-based implementation of the Storage trait.
 
-use crate::state::{DomainState, PageState};
+use crate::state::{CachedRobots, DomainState, PageState};
 use crate::storage::schema::initialize_schema;
 use crate::storage::traits::{Storage, StorageError, StorageResult};
 use crate::storage::{DepthRecord, LinkRecord, PageRecord, RunRecord, RunStatus};
 use crate::SumiError;
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 use rusqlite::{params, Connection, OptionalExtension};
 use std::collections::HashMap;
 use std::path::Path;
@@ -446,17 +446,92 @@ impl Storage for SqliteStorage {
     // ===== Domain State Persistence =====
 
     fn load_domain_states(&self) -> StorageResult<HashMap<String, DomainState>> {
-        // TODO: Implement full domain state loading
-        Ok(HashMap::new())
+        let mut stmt = self.conn.prepare(
+            "SELECT domain, request_count, rate_limited, robots_txt, robots_fetched_at, last_request_time
+             FROM domain_states"
+        )?;
+
+        let mut states = HashMap::new();
+        let rows = stmt.query_map([], |row| {
+            let domain: String = row.get(0)?;
+            let request_count: u32 = row.get(1)?;
+            let rate_limited_int: i32 = row.get(2)?;
+            let robots_txt: Option<String> = row.get(3)?;
+            let robots_fetched_at: Option<String> = row.get(4)?;
+            let _last_request_time: Option<String> = row.get(5)?;
+
+            let robots = if let (Some(content), Some(fetched_str)) = (robots_txt, robots_fetched_at)
+            {
+                if let Ok(fetched_at) = fetched_str.parse::<DateTime<Utc>>() {
+                    Some(CachedRobots {
+                        content,
+                        fetched_at,
+                    })
+                } else {
+                    None
+                }
+            } else {
+                None
+            };
+
+            let state = DomainState {
+                request_count,
+                last_request_time: None, // We don't persist Instant, will be set on first use
+                rate_limited: rate_limited_int != 0,
+                robots_txt: robots.clone(),
+                robots_fetched_at: robots.as_ref().map(|r| r.fetched_at),
+            };
+
+            Ok((domain, state))
+        })?;
+
+        for row in rows {
+            let (domain, state) = row?;
+            states.insert(domain, state);
+        }
+
+        Ok(states)
     }
 
-    fn save_domain_states(&mut self, _states: &HashMap<String, DomainState>) -> StorageResult<()> {
-        // TODO: Implement domain state saving
+    fn save_domain_states(&mut self, states: &HashMap<String, DomainState>) -> StorageResult<()> {
+        // Clear existing domain states
+        self.conn.execute("DELETE FROM domain_states", [])?;
+
+        // Insert all current states
+        for (domain, state) in states {
+            self.update_domain_state(domain, state)?;
+        }
+
         Ok(())
     }
 
-    fn update_domain_state(&mut self, _domain: &str, _state: &DomainState) -> StorageResult<()> {
-        // TODO: Implement domain state updating
+    fn update_domain_state(&mut self, domain: &str, state: &DomainState) -> StorageResult<()> {
+        let rate_limited_int = if state.rate_limited { 1 } else { 0 };
+
+        let (robots_txt, robots_fetched_at) = if let Some(robots) = &state.robots_txt {
+            (
+                Some(robots.content.clone()),
+                Some(robots.fetched_at.to_rfc3339()),
+            )
+        } else {
+            (None, None)
+        };
+
+        // Note: We don't persist last_request_time (Instant) as it's not serializable
+        // It will be reset when domain state is loaded
+        self.conn.execute(
+            "INSERT OR REPLACE INTO domain_states
+             (domain, request_count, rate_limited, robots_txt, robots_fetched_at, last_request_time)
+             VALUES (?1, ?2, ?3, ?4, ?5, NULL)",
+            params![
+                domain,
+                state.request_count,
+                rate_limited_int,
+                robots_txt,
+                robots_fetched_at,
+            ],
+        )?;
+
         Ok(())
     }
 
@@ -660,5 +735,89 @@ mod tests {
         let page = storage.get_page(page_id).unwrap();
         assert_eq!(page.state, PageState::Processed);
         assert_eq!(page.title, Some("Test Page".to_string()));
+    }
+
+    #[test]
+    fn test_domain_state_persistence() {
+        let mut storage = SqliteStorage::new_in_memory().unwrap();
+
+        // Create a domain state
+        let mut state = DomainState::new();
+        state.request_count = 42;
+        state.rate_limited = true;
+        state.update_robots("User-agent: *\nDisallow: /admin".to_string());
+
+        // Save it
+        storage.update_domain_state("example.com", &state).unwrap();
+
+        // Load it back
+        let loaded_states = storage.load_domain_states().unwrap();
+        assert_eq!(loaded_states.len(), 1);
+
+        let loaded_state = loaded_states.get("example.com").unwrap();
+        assert_eq!(loaded_state.request_count, 42);
+        assert_eq!(loaded_state.rate_limited, true);
+        assert!(loaded_state.robots_txt.is_some());
+        assert_eq!(
+            loaded_state.robots_txt.as_ref().unwrap().content,
+            "User-agent: *\nDisallow: /admin"
+        );
+    }
+
+    #[test]
+    fn test_save_multiple_domain_states() {
+        let mut storage = SqliteStorage::new_in_memory().unwrap();
+
+        // Create multiple domain states
+        let mut states = HashMap::new();
+
+        let mut state1 = DomainState::new();
+        state1.request_count = 10;
+        states.insert("example.com".to_string(), state1);
+
+        let mut state2 = DomainState::new();
+        state2.request_count = 20;
+        state2.rate_limited = true;
+        states.insert("test.com".to_string(), state2);
+
+        let mut state3 = DomainState::new();
+        state3.request_count = 5;
+        states.insert("demo.org".to_string(), state3);
+
+        // Save all states
+        storage.save_domain_states(&states).unwrap();
+
+        // Load them back
+        let loaded_states = storage.load_domain_states().unwrap();
+        assert_eq!(loaded_states.len(), 3);
+
+        assert_eq!(loaded_states.get("example.com").unwrap().request_count, 10);
+        assert_eq!(loaded_states.get("test.com").unwrap().request_count, 20);
+        assert!(loaded_states.get("test.com").unwrap().rate_limited);
+        assert_eq!(loaded_states.get("demo.org").unwrap().request_count, 5);
+    }
+
+    #[test]
+    fn test_update_domain_state_replaces_existing() {
+        let mut storage = SqliteStorage::new_in_memory().unwrap();
+
+        // Create and save initial state
+        let mut state1 = DomainState::new();
+        state1.request_count = 10;
+        storage.update_domain_state("example.com", &state1).unwrap();
+
+        // Update with new state
+        let mut state2 = DomainState::new();
+        state2.request_count = 20;
+        state2.rate_limited = true;
+        storage.update_domain_state("example.com", &state2).unwrap();
+
+        // Load and verify only latest state exists
+        let loaded_states = storage.load_domain_states().unwrap();
+        assert_eq!(loaded_states.len(), 1);
+
+        let loaded = loaded_states.get("example.com").unwrap();
+        assert_eq!(loaded.request_count, 20);
+        assert!(loaded.rate_limited);
     }
 }

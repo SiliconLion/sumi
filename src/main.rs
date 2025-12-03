@@ -165,15 +165,21 @@ fn handle_dry_run(config: &sumi_ripple::config::Config) -> Result<(), Box<dyn st
 
 /// Handles the --stats mode: shows statistics from the database
 fn handle_stats(config: &sumi_ripple::config::Config) -> Result<(), Box<dyn std::error::Error>> {
-    println!("=== Sumi-Ripple Statistics ===\n");
-    println!("Database: {}", config.output.database_path);
-    println!("\n[Statistics functionality not yet implemented]");
-    println!("This will show:");
-    println!("  - Total pages crawled");
-    println!("  - Pages by state");
-    println!("  - Unique domains discovered");
-    println!("  - Total links found");
-    println!("  - Error summary");
+    use std::path::Path;
+    use sumi_ripple::output::{load_statistics, print_statistics};
+    use sumi_ripple::storage::SqliteStorage;
+
+    println!("Database: {}\n", config.output.database_path);
+
+    // Open the database
+    let storage = SqliteStorage::new(Path::new(&config.output.database_path))?;
+
+    // Load statistics
+    let stats = load_statistics(&storage)?;
+
+    // Print statistics
+    print_statistics(&stats);
+
     Ok(())
 }
 
@@ -181,11 +187,28 @@ fn handle_stats(config: &sumi_ripple::config::Config) -> Result<(), Box<dyn std:
 fn handle_export_summary(
     config: &sumi_ripple::config::Config,
 ) -> Result<(), Box<dyn std::error::Error>> {
+    use std::path::Path;
+    use sumi_ripple::output::{generate_markdown_summary, generate_summary};
+    use sumi_ripple::storage::SqliteStorage;
+
     println!("=== Exporting Crawl Summary ===\n");
     println!("Database: {}", config.output.database_path);
     println!("Output: {}", config.output.summary_path);
-    println!("\n[Export functionality not yet implemented]");
-    println!("This will generate a markdown summary from the database.");
+    println!();
+
+    // Open the database
+    let storage = SqliteStorage::new(Path::new(&config.output.database_path))?;
+
+    // Generate summary from storage
+    tracing::info!("Loading crawl data from database...");
+    let summary = generate_summary(&storage)?;
+
+    // Write markdown summary to file
+    tracing::info!("Generating markdown summary...");
+    generate_markdown_summary(&summary, Path::new(&config.output.summary_path))?;
+
+    println!("✓ Summary exported to: {}", config.output.summary_path);
+
     Ok(())
 }
 
