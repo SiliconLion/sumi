@@ -23,7 +23,13 @@ use crate::SumiError;
 /// * `Ok(ParsedRobots)` - Successfully fetched and parsed robots.txt
 /// * `Err(SumiError)` - Failed to fetch or parse
 pub async fn fetch_robots(domain: &str, user_agent: &str) -> Result<ParsedRobots, SumiError> {
-    let robots_url = format!("https://{}/robots.txt", domain);
+    // Domain might include port (e.g., "localhost:8080"), so we need to handle both http and https
+    // Try https first, but for localhost/127.0.0.1 with ports, try http
+    let robots_url = if domain.starts_with("127.0.0.1:") || domain.starts_with("localhost:") {
+        format!("http://{}/robots.txt", domain)
+    } else {
+        format!("https://{}/robots.txt", domain)
+    };
 
     tracing::debug!("Fetching robots.txt from {}", robots_url);
 

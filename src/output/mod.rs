@@ -17,7 +17,6 @@ pub use traits::{CrawlSummary, OutputHandler};
 
 use crate::storage::Storage;
 use crate::SumiError;
-use std::collections::HashMap;
 
 /// Generates a crawl summary from storage
 ///
@@ -120,6 +119,16 @@ pub fn generate_summary(storage: &dyn Storage) -> Result<CrawlSummary, SumiError
     let top_blacklisted = storage.get_blacklisted_urls()?;
     let top_stubbed = storage.get_stubbed_urls()?;
 
+    // Get depth breakdown
+    let depth_breakdown = storage
+        .get_depth_breakdown()?
+        .into_iter()
+        .map(|(k, v)| (k, v as u64))
+        .collect();
+
+    // Get discovered domains
+    let discovered_domains = storage.get_discovered_domains()?;
+
     Ok(CrawlSummary {
         run_id: run.id,
         started_at: run.started_at,
@@ -143,12 +152,12 @@ pub fn generate_summary(storage: &dyn Storage) -> Result<CrawlSummary, SumiError
         pages_depth_exceeded,
         pages_request_limit_hit,
         pages_content_mismatch,
-        depth_breakdown: HashMap::new(), // TODO: Implement depth breakdown
-        discovered_domains: vec![],      // TODO: Query discovered domains
+        depth_breakdown,
+        discovered_domains,
         top_blacklisted,
         top_stubbed,
         error_summary: stats.error_summary.clone(),
         rate_limited_domains: stats.rate_limited_domains.clone(),
-        quality_domains: vec![], // TODO: Extract from config or storage
+        quality_domains: vec![], // Note: Quality domains would need to be stored in DB or passed from config
     })
 }

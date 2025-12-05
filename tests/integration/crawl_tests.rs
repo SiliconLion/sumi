@@ -58,8 +58,21 @@ async fn test_full_crawl_single_domain() {
         .mount(&mock_server)
         .await;
 
-    // Mock HEAD requests for all pages except robots.txt
+    // Mock HEAD requests for HTML pages
     Mock::given(method("HEAD"))
+        .and(path("/"))
+        .respond_with(ResponseTemplate::new(200).insert_header("content-type", "text/html"))
+        .mount(&mock_server)
+        .await;
+
+    Mock::given(method("HEAD"))
+        .and(path("/page1"))
+        .respond_with(ResponseTemplate::new(200).insert_header("content-type", "text/html"))
+        .mount(&mock_server)
+        .await;
+
+    Mock::given(method("HEAD"))
+        .and(path("/page2"))
         .respond_with(ResponseTemplate::new(200).insert_header("content-type", "text/html"))
         .mount(&mock_server)
         .await;
@@ -231,16 +244,47 @@ async fn test_robots_txt_respect() {
     // Verify results
     let storage = SqliteStorage::new(std::path::Path::new(&db_path)).expect("Failed to open DB");
 
+    // Debug: print all pages and their states
+    use sumi_ripple::storage::Storage;
+    eprintln!("All pages in database:");
+    for state in [
+        PageState::Discovered,
+        PageState::Queued,
+        PageState::Fetching,
+        PageState::Processed,
+        PageState::Failed,
+        PageState::Blacklisted,
+        PageState::Stubbed,
+        PageState::DeadLink,
+        PageState::Unreachable,
+        PageState::RateLimited,
+        PageState::DepthExceeded,
+        PageState::RequestLimitHit,
+        PageState::ContentMismatch,
+    ] {
+        let pages = storage
+            .get_pages_by_state(state)
+            .expect("Failed to get pages");
+        for page in pages {
+            eprintln!(
+                "  {} -> {:?} (error: {:?})",
+                page.url, page.state, page.error_message
+            );
+        }
+    }
+
     // Should have processed / and /allowed
     let processed = storage
         .count_pages_by_state(PageState::Processed)
         .expect("Failed to count processed");
+    eprintln!("Processed pages: {}", processed);
     assert!(processed >= 2, "Expected at least 2 processed pages");
 
     // /admin should be in Failed state (disallowed by robots.txt)
     let failed = storage
         .count_pages_by_state(PageState::Failed)
         .expect("Failed to count failed");
+    eprintln!("Failed pages: {}", failed);
     assert!(failed >= 1, "Expected at least 1 failed page (admin)");
 
     // Clean up

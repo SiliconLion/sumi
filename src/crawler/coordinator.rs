@@ -15,7 +15,9 @@ use crate::crawler::{build_http_client, fetch_url, FetchResult};
 use crate::robots::{fetch_robots, is_allowed, ParsedRobots};
 use crate::state::PageState;
 use crate::storage::{SqliteStorage, Storage};
-use crate::url::{classify_domain, extract_domain, normalize_url, DomainClassification};
+use crate::url::{
+    classify_domain, extract_domain, extract_domain_with_port, normalize_url, DomainClassification,
+};
 use crate::SumiError;
 use reqwest::Client;
 use std::path::Path;
@@ -235,11 +237,22 @@ impl Coordinator {
             storage.update_page_state(page_id, PageState::Fetching, None, None, None, None)?;
         }
 
-        // Check robots.txt
-        let robots = self.get_or_fetch_robots(&queued.domain).await?;
+        // Check robots.txt - use domain with port for proper fetching
+        let domain_with_port =
+            extract_domain_with_port(&queued.url).unwrap_or_else(|| queued.domain.clone());
+        let robots = self.get_or_fetch_robots(&domain_with_port).await?;
 
         // Check if URL is allowed by robots.txt
-        if !is_allowed(&robots, url_str, &self.user_agent) {
+        // Extract just the path from the URL for robots.txt checking
+        let url_path = queued.url.path();
+        tracing::debug!(
+            "Checking robots.txt for path '{}' with user agent '{}'",
+            url_path,
+            self.user_agent
+        );
+        let allowed = is_allowed(&robots, url_path, &self.user_agent);
+        tracing::debug!("Robots.txt check result: allowed={}", allowed);
+        if !allowed {
             tracing::info!("URL {} disallowed by robots.txt", url_str);
             let mut storage = self.storage.lock().unwrap();
             storage.update_page_state(
@@ -484,6 +497,25 @@ impl Coordinator {
                                 page_id: to_page_id,
                             });
                         }
+                    } else {
+                        // Page is beyond max_depth, mark as DepthExceeded
+                        let page = {
+                            let storage = self.storage.lock().unwrap();
+                            storage.get_page(to_page_id)?
+                        };
+
+                        // Only mark as DepthExceeded if it's still in Discovered state
+                        if page.state == PageState::Discovered {
+                            let mut storage = self.storage.lock().unwrap();
+                            storage.update_page_state(
+                                to_page_id,
+                                PageState::DepthExceeded,
+                                None,
+                                None,
+                                None,
+                                Some("Exceeds max depth limit"),
+                            )?;
+                        }
                     }
                 }
             }
@@ -510,13 +542,21 @@ impl Coordinator {
     /// and fetches it if needed or if the cache is stale.
     async fn get_or_fetch_robots(&mut self, domain: &str) -> Result<ParsedRobots, SumiError> {
         // Check if scheduler has cached robots.txt for this domain
-        let needs_fetch = if let Some(domain_state) = self.scheduler.get_domain_state(domain) {
-            domain_state.is_robots_stale()
+        let cached_content = if let Some(domain_state) = self.scheduler.get_domain_state(domain) {
+            if domain_state.is_robots_stale() {
+                None
+            } else {
+                domain_state.robots_txt.as_ref().map(|r| r.content.clone())
+            }
         } else {
-            true
+            None
         };
 
-        if needs_fetch {
+        if let Some(content) = cached_content {
+            // Use cached robots.txt and re-parse it
+            tracing::debug!("Using cached robots.txt for domain: {}", domain);
+            Ok(ParsedRobots::from_content(&content))
+        } else {
             // Fetch robots.txt
             tracing::debug!("Fetching robots.txt for domain: {}", domain);
             let robots = fetch_robots(domain, &self.user_agent).await?;
@@ -524,19 +564,11 @@ impl Coordinator {
             // Cache it in the domain state
             if let Some(domain_state) = self.scheduler.get_domain_state_mut(domain) {
                 // Get the robots.txt content for caching
-                // Since ParsedRobots doesn't expose content directly, we'll just mark as fetched
-                domain_state.update_robots(String::new());
+                let content = robots.content();
+                domain_state.update_robots(content);
             }
 
             Ok(robots)
-        } else {
-            // Use cached robots.txt
-            tracing::debug!("Using cached robots.txt for domain: {}", domain);
-
-            // We need to re-parse from cached content
-            // For now, just return allow_all since we don't store the parsed version
-            // TODO: Improve this to actually cache the parsed robots
-            Ok(ParsedRobots::allow_all())
         }
     }
 }

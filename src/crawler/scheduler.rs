@@ -9,7 +9,8 @@
 
 use crate::config::CrawlerConfig;
 use crate::state::DomainState;
-use std::collections::HashMap;
+use std::cmp::Ordering;
+use std::collections::{BinaryHeap, HashMap};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::Semaphore;
@@ -30,6 +31,32 @@ pub struct QueuedUrl {
     /// Database page ID
     pub page_id: i64,
 }
+
+// Implement ordering traits for priority queue
+// Lower priority values have higher priority (are popped first from BinaryHeap)
+impl Ord for QueuedUrl {
+    fn cmp(&self, other: &Self) -> Ordering {
+        // Reverse comparison so lower priority values come first
+        other
+            .priority
+            .cmp(&self.priority)
+            .then_with(|| self.url.as_str().cmp(other.url.as_str()))
+    }
+}
+
+impl PartialOrd for QueuedUrl {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl PartialEq for QueuedUrl {
+    fn eq(&self, other: &Self) -> bool {
+        self.priority == other.priority && self.url == other.url
+    }
+}
+
+impl Eq for QueuedUrl {}
 
 /// A scheduled fetch with a semaphore permit
 pub struct ScheduledFetch {
@@ -54,9 +81,8 @@ pub struct Scheduler {
     /// Per-domain state tracking
     domain_states: HashMap<String, DomainState>,
 
-    /// Frontier queue of URLs to fetch
-    /// TODO: Replace with proper priority queue implementation
-    frontier: Vec<QueuedUrl>,
+    /// Frontier priority queue of URLs to fetch (lower priority values are fetched first)
+    frontier: BinaryHeap<QueuedUrl>,
 
     /// Crawler configuration
     config: CrawlerConfig,
@@ -84,7 +110,7 @@ impl Scheduler {
         Self {
             global_semaphore,
             domain_states: initial_domain_states,
-            frontier: initial_frontier,
+            frontier: BinaryHeap::from(initial_frontier),
             config,
         }
     }
@@ -92,46 +118,148 @@ impl Scheduler {
     /// Gets the next URL to fetch
     ///
     /// This method:
-    /// 1. Acquires a global semaphore permit
-    /// 2. Searches the frontier for a URL whose domain can accept a request
-    /// 3. Returns the URL with its permit, or None if no URLs are available
+    /// 1. Returns None if the frontier is truly empty
+    /// 2. Acquires a global semaphore permit
+    /// 3. Searches the frontier for a URL whose domain can accept a request
+    /// 4. If no domain is ready, waits for the minimum required time and retries
+    /// 5. Returns the URL with its permit
     ///
     /// # Returns
     ///
     /// * `Some(ScheduledFetch)` - A URL that's ready to fetch
-    /// * `None` - No URLs are currently available to fetch
+    /// * `None` - The frontier is empty
     pub async fn next_url(&mut self) -> Option<ScheduledFetch> {
+        // Return None only if frontier is truly empty
+        if self.frontier.is_empty() {
+            return None;
+        }
+
         // Acquire global semaphore permit
         let permit = self.global_semaphore.clone().acquire_owned().await.ok()?;
 
-        let now = Instant::now();
+        // Active wait loop: keep trying until we find a ready domain
+        let start_waiting = Instant::now();
+        let max_wait_time = Duration::from_secs(30); // Maximum 30 seconds wait
 
-        // Find the first URL whose domain can accept a request
-        let position = self.frontier.iter().position(|queued| {
-            let state = self
-                .domain_states
-                .entry(queued.domain.clone())
-                .or_insert_with(DomainState::new);
+        loop {
+            // Check if we've been waiting too long
+            if start_waiting.elapsed() > max_wait_time {
+                tracing::warn!(
+                    "Exceeded maximum wait time of {:?} while waiting for domains. Frontier size: {}",
+                    max_wait_time,
+                    self.frontier.len()
+                );
+                // This might indicate a bug, but let's not hang forever
+                return None;
+            }
+            let now = Instant::now();
 
-            state.can_request(&self.config, now)
-        })?;
+            // Collect URLs that are not ready yet (need to put them back)
+            let mut not_ready = Vec::new();
+            let mut found = None;
 
-        // Remove and return the URL
-        let url = self.frontier.remove(position);
+            // Pop URLs from the heap until we find one that's ready
+            // URLs are popped in priority order (lower priority values first)
+            while let Some(queued) = self.frontier.pop() {
+                let state = self
+                    .domain_states
+                    .entry(queued.domain.clone())
+                    .or_insert_with(DomainState::new);
 
-        Some(ScheduledFetch {
-            url,
-            _permit: permit,
-        })
+                let can_req = state.can_request(&self.config, now);
+                tracing::trace!(
+                    "Checking domain {} for URL {}: can_request={}",
+                    queued.domain,
+                    queued.url,
+                    can_req
+                );
+
+                if can_req {
+                    // Found a ready URL
+                    found = Some(queued);
+                    break;
+                } else {
+                    // Not ready yet, save for later
+                    not_ready.push(queued);
+                }
+            }
+
+            // Put back the URLs we couldn't use
+            for queued in not_ready {
+                self.frontier.push(queued);
+            }
+
+            if let Some(url) = found {
+                tracing::debug!("Returning URL: {}", url.url);
+                return Some(ScheduledFetch {
+                    url,
+                    _permit: permit,
+                });
+            }
+
+            // No domains ready, calculate minimum wait time
+            let min_wait = self.calculate_minimum_wait_time(now);
+
+            tracing::debug!(
+                "No domains ready, waiting {:?}. Frontier size: {}",
+                min_wait,
+                self.frontier.len()
+            );
+
+            // Sleep for the minimum time needed
+            tokio::time::sleep(min_wait).await;
+
+            // Check again if frontier is still not empty after sleep
+            if self.frontier.is_empty() {
+                return None;
+            }
+        }
+    }
+
+    /// Calculates the minimum time to wait before any domain is ready
+    ///
+    /// This method iterates through the frontier and finds the domain that will
+    /// be ready soonest, returning the time until that domain is ready.
+    ///
+    /// # Arguments
+    ///
+    /// * `now` - The current time instant
+    ///
+    /// # Returns
+    ///
+    /// The minimum duration to wait before checking again
+    fn calculate_minimum_wait_time(&self, now: Instant) -> Duration {
+        let mut min_wait = Duration::from_millis(100); // Default 100ms
+
+        for queued in self.frontier.iter() {
+            if let Some(state) = self.domain_states.get(&queued.domain) {
+                if let Some(wait) = state.time_until_next_request(&self.config, now) {
+                    if wait < min_wait {
+                        min_wait = wait;
+                    }
+                } else {
+                    // Domain state exists but can request now - return minimal wait
+                    return Duration::from_millis(10);
+                }
+            } else {
+                // Domain has no state yet, so it's ready immediately
+                return Duration::from_millis(10);
+            }
+        }
+
+        // Add small buffer to ensure the domain is definitely ready
+        min_wait + Duration::from_millis(10)
     }
 
     /// Adds a URL to the frontier
+    ///
+    /// The URL is inserted into the priority queue based on its priority value.
+    /// URLs with lower priority values will be fetched first.
     ///
     /// # Arguments
     ///
     /// * `url` - The queued URL to add
     pub fn add_to_frontier(&mut self, url: QueuedUrl) {
-        // TODO: Insert into priority queue maintaining order
         self.frontier.push(url);
     }
 
@@ -205,6 +333,7 @@ impl Scheduler {
 /// # Returns
 ///
 /// The effective delay duration
+#[cfg(test)]
 pub fn effective_delay(
     config: &CrawlerConfig,
     domain_state: &DomainState,
@@ -361,7 +490,7 @@ mod tests {
 
         // Add robots.txt with different delays for different user agents
         domain_state.update_robots(
-            "User-agent: TestBot\nCrawl-delay: 10\n\nUser-agent: *\nCrawl-delay: 2".to_string()
+            "User-agent: TestBot\nCrawl-delay: 10\n\nUser-agent: *\nCrawl-delay: 2".to_string(),
         );
 
         // TestBot should get 10 seconds

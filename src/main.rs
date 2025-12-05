@@ -60,7 +60,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Load and validate configuration
     tracing::info!("Loading configuration from: {}", cli.config.display());
-    let (config, config_hash) = match load_config_with_hash(&cli.config) {
+    let (config, _config_hash) = match load_config_with_hash(&cli.config) {
         Ok((cfg, hash)) => {
             tracing::info!("Configuration loaded successfully (hash: {})", hash);
             (cfg, hash)

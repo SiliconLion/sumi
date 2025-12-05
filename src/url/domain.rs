@@ -33,6 +33,29 @@ pub fn extract_domain(url: &Url) -> Option<String> {
     url.host_str().map(|h| h.to_lowercase())
 }
 
+/// Extracts the domain with port from a URL
+///
+/// This function returns the domain (host:port) portion of a URL in lowercase.
+/// If no explicit port is specified, only the host is returned.
+///
+/// # Arguments
+///
+/// * `url` - The URL to extract the domain from
+///
+/// # Returns
+///
+/// * `Some(String)` - The domain with port if specified, in lowercase
+/// * `None` - If the URL has no host
+pub fn extract_domain_with_port(url: &Url) -> Option<String> {
+    url.host_str().map(|h| {
+        if let Some(port) = url.port() {
+            format!("{}:{}", h.to_lowercase(), port)
+        } else {
+            h.to_lowercase()
+        }
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

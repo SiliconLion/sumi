@@ -10,7 +10,7 @@ mod normalize;
 use crate::config::Config;
 
 // Re-export main functions
-pub use domain::extract_domain;
+pub use domain::{extract_domain, extract_domain_with_port};
 pub use matcher::matches_wildcard;
 pub use normalize::normalize_url;
 

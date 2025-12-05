@@ -43,6 +43,15 @@ impl ParsedRobots {
         }
     }
 
+    /// Returns the raw robots.txt content
+    ///
+    /// # Returns
+    ///
+    /// The raw robots.txt content string
+    pub fn content(&self) -> String {
+        self.content.clone()
+    }
+
     /// Checks if a URL is allowed for the given user agent
     ///
     /// # Arguments

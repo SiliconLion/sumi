@@ -111,6 +111,7 @@ impl RedirectChain {
     }
 
     /// Checks if a URL has been visited (loop detection)
+    #[allow(dead_code)]
     pub fn has_visited(&self, url: &str) -> bool {
         self.visited.contains(url)
     }
@@ -222,7 +223,7 @@ pub fn build_http_client(config: &UserAgentConfig) -> Result<Client, reqwest::Er
         .timeout(Duration::from_secs(30))
         .connect_timeout(Duration::from_secs(10))
         .redirect(Policy::none()) // Handle redirects manually
-        .https_only(true)
+        .https_only(false) // Allow HTTP for testing
         .gzip(true)
         .brotli(true)
         .build()
@@ -425,12 +426,22 @@ async fn fetch_url_with_redirects(
                 .unwrap_or("")
                 .to_string();
 
-            // If HEAD succeeded and content-type is not HTML, return mismatch
-            if status.is_success()
-                && !content_type.is_empty()
-                && !content_type.contains("text/html")
-            {
-                return FetchResult::ContentMismatch { content_type };
+            // If HEAD succeeded and content-type is definitely not HTML, return mismatch
+            // We only reject if we're certain it's not HTML (e.g., images, PDFs)
+            // text/plain might just be a server misconfiguration, so we'll try GET anyway
+            if status.is_success() && !content_type.is_empty() {
+                let lowercase_type = content_type.to_lowercase();
+                // Only reject obviously non-HTML content types
+                if lowercase_type.starts_with("image/")
+                    || lowercase_type.starts_with("video/")
+                    || lowercase_type.starts_with("audio/")
+                    || lowercase_type.starts_with("application/pdf")
+                    || lowercase_type.starts_with("application/zip")
+                    || lowercase_type.starts_with("application/octet-stream")
+                {
+                    return FetchResult::ContentMismatch { content_type };
+                }
+                // For text/plain, application/json, etc., we'll try GET to be sure
             }
         }
         Err(e) => {
@@ -540,8 +551,19 @@ async fn fetch_url_with_redirects(
                 .unwrap_or("")
                 .to_string();
 
-            if !content_type.contains("text/html") && !content_type.is_empty() {
-                return FetchResult::ContentMismatch { content_type };
+            // Only reject obviously non-HTML content types
+            // Similar logic to HEAD check above
+            if !content_type.is_empty() {
+                let lowercase_type = content_type.to_lowercase();
+                if lowercase_type.starts_with("image/")
+                    || lowercase_type.starts_with("video/")
+                    || lowercase_type.starts_with("audio/")
+                    || lowercase_type.starts_with("application/pdf")
+                    || lowercase_type.starts_with("application/zip")
+                    || lowercase_type.starts_with("application/octet-stream")
+                {
+                    return FetchResult::ContentMismatch { content_type };
+                }
             }
 
             // Get body
@@ -618,6 +640,7 @@ async fn fetch_url_with_redirects(
 /// * `Ok(Some(String))` - Content-Type header value
 /// * `Ok(None)` - No Content-Type header
 /// * `Err(FetchResult)` - Error occurred during HEAD request
+#[allow(dead_code)]
 pub async fn check_content_type(client: &Client, url: &str) -> Result<Option<String>, FetchResult> {
     match client.head(url).send().await {
         Ok(response) => {

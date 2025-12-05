@@ -643,6 +643,46 @@ impl Storage for SqliteStorage {
 
         Ok(domains)
     }
+
+    fn get_depth_breakdown(&self) -> StorageResult<HashMap<u32, usize>> {
+        let query = "
+            SELECT depth, COUNT(DISTINCT page_id) as count
+            FROM page_depths
+            GROUP BY depth
+            ORDER BY depth
+        ";
+
+        let mut stmt = self.conn.prepare(query)?;
+        let rows = stmt.query_map([], |row| {
+            Ok((row.get::<_, u32>(0)?, row.get::<_, usize>(1)?))
+        })?;
+
+        let mut breakdown = HashMap::new();
+        for row in rows {
+            let (depth, count) = row?;
+            breakdown.insert(depth, count);
+        }
+
+        Ok(breakdown)
+    }
+
+    fn get_discovered_domains(&self) -> StorageResult<Vec<String>> {
+        let query = "
+            SELECT DISTINCT domain
+            FROM pages
+            ORDER BY domain
+        ";
+
+        let mut stmt = self.conn.prepare(query)?;
+        let rows = stmt.query_map([], |row| row.get::<_, String>(0))?;
+
+        let mut domains = Vec::new();
+        for row in rows {
+            domains.push(row?);
+        }
+
+        Ok(domains)
+    }
 }
 
 /// Initializes or opens a database at the given path

@@ -131,7 +131,8 @@ pub fn initialize_schema(conn: &rusqlite::Connection) -> Result<(), rusqlite::Er
 
 /// Gets the current schema version
 ///
-/// This can be used for future migrations if the schema changes.
+/// This function is reserved for future schema migration support.
+#[allow(dead_code)]
 pub fn get_schema_version() -> u32 {
     1
 }

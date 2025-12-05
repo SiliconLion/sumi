@@ -221,4 +221,14 @@ pub trait Storage {
 
     /// Gets domains that hit the request limit
     fn get_rate_limited_domains(&self) -> StorageResult<Vec<String>>;
+
+    /// Gets page count breakdown by depth
+    ///
+    /// Returns a map of depth -> number of pages at that depth
+    fn get_depth_breakdown(&self) -> StorageResult<HashMap<u32, usize>>;
+
+    /// Gets list of all discovered domains
+    ///
+    /// Returns a sorted list of unique domains found during the crawl
+    fn get_discovered_domains(&self) -> StorageResult<Vec<String>>;
 }
